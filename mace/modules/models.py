@@ -12,7 +12,7 @@ from e3nn import o3
 from e3nn.util.jit import compile_mode
 
 from mace.data import AtomicData
-from mace.modules.radial import ZBLBasis
+from mace.modules.radial import SoftCoreLennardJones, ZBLBasis
 from mace.tools.scatter import scatter_sum
 
 from .blocks import (
@@ -57,7 +57,7 @@ class MACE(torch.nn.Module):
         atomic_numbers: List[int],
         correlation: Union[int, List[int]],
         gate: Optional[Callable],
-        pair_repulsion: bool = False,
+        pair_repulsion: Optional[str],
         distance_transform: str = "None",
         radial_MLP: Optional[List[int]] = None,
         radial_type: Optional[str] = "bessel",
@@ -88,9 +88,14 @@ class MACE(torch.nn.Module):
             distance_transform=distance_transform,
         )
         edge_feats_irreps = o3.Irreps(f"{self.radial_embedding.out_dim}x0e")
-        if pair_repulsion:
-            self.pair_repulsion_fn = ZBLBasis(r_max=r_max, p=num_polynomial_cutoff)
-            self.pair_repulsion = True
+        self.pair_repulsion = pair_repulsion
+        if pair_repulsion is not None:
+            if pair_repulsion == "ZBL":
+                self.pair_repulsion_fn = ZBLBasis(r_max=r_max, p=num_polynomial_cutoff)
+            elif pair_repulsion == "SCLJ":
+                self.pair_repulsion_fn = SoftCoreLennardJones(
+                    r_max=r_max, p=num_polynomial_cutoff
+                )
 
         sh_irreps = o3.Irreps.spherical_harmonics(max_ell)
         num_features = hidden_irreps.count(o3.Irrep(0, 1))
@@ -312,7 +317,7 @@ class ScaleShiftMACE(MACE):
         compute_displacement: bool = False,
         compute_hessian: bool = False,
         decouple_indices: Optional[torch.Tensor] = None,
-        lmbda: Optional[torch.Tensor] = None,
+        lmbda: torch.Tensor = torch.tensor(1.0),
     ) -> Dict[str, Optional[torch.Tensor]]:
         # Setup
         data["positions"].requires_grad_(True)
@@ -372,13 +377,27 @@ class ScaleShiftMACE(MACE):
 
             edge_attrs[alchemical_mask] *= lmbda
             edge_feats[alchemical_mask] *= lmbda
-
-        if hasattr(self, "pair_repulsion"):
-            pair_node_energy = self.pair_repulsion_fn(
-                lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
-            )
         else:
-            pair_node_energy = torch.zeros_like(node_e0)
+            alchemical_mask = torch.zeros_like(data["edge_index"][0], dtype=torch.bool)
+        match self.pair_repulsion:
+            case "ZBL":
+                pair_node_energy = self.pair_repulsion_fn(
+                    lengths,
+                    data["node_attrs"],
+                    data["edge_index"],
+                    self.atomic_numbers,
+                )
+            case "SCLJ":
+                pair_node_energy = self.pair_repulsion_fn(
+                    lengths,
+                    node_attrs=data["node_attrs"],
+                    edge_index=data["edge_index"],
+                    atomic_numbers=self.atomic_numbers,
+                    lmbda=lmbda,
+                    alchemical_mask=alchemical_mask,
+                )
+            case None:
+                pair_node_energy = torch.zeros_like(node_e0)
         # Interactions
         node_es_list = [pair_node_energy]
         node_feats_list = []

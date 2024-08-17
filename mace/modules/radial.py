@@ -142,6 +142,84 @@ class PolynomialCutoff(torch.nn.Module):
 
 
 @compile_mode("script")
+class SoftCoreLennardJones(torch.nn.Module):
+    """
+    Implements softcore lennard jones potential
+    """
+
+    def __init__(self, r_max: float, p: float):
+        super().__init__()
+        self.register_buffer(
+            "r_max", torch.tensor(r_max, dtype=torch.get_default_dtype())
+        )
+        self.register_buffer(
+            "covalent_radii",
+            torch.tensor(ase.data.covalent_radii, dtype=torch.get_default_dtype()),
+        )
+        self.register_buffer("p", torch.tensor(p, dtype=torch.get_default_dtype()))
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_index: torch.Tensor,
+        atomic_numbers: torch.Tensor,
+        alchemical_mask: torch.Tensor,
+        lmbda: torch.Tensor = torch.tensor(1.0),
+        lambda_pow: int = 2,
+    ) -> torch.Tensor:
+        sender = edge_index[0]
+        receiver = edge_index[1]
+        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(
+            -1
+        )
+        Z_u = node_atomic_numbers[sender]
+        Z_v = node_atomic_numbers[receiver]
+        r_max = self.covalent_radii[Z_u] + self.covalent_radii[Z_v]
+        sigma_u = self.covalent_radii[Z_u] * 2 ** (-1 / 6)
+        sigma_v = self.covalent_radii[Z_v] * 2 ** (-1 / 6)
+        sigma_uv = (sigma_u + sigma_v) / 2
+        # edge-dependent lambda: 1 for non-alchemical edges, lmbda for alchemical v_edges
+        lmbdas = torch.ones_like(sender, dtype=torch.get_default_dtype())
+        # set lambdas where alchemical_mask is True to lmbda
+        lmbdas[alchemical_mask] = lmbda
+        lmbdas = lmbdas.unsqueeze(-1)
+
+        # epsilon_uv = torch.sqrt(
+        #     self.cohesive_energies[Z_u] * self.cohesive_energies[Z_v]
+        # )
+
+        # Buetler-style soft-core Lennard-Jones potential
+        envelope = (
+            1.0
+            - ((self.p + 1.0) * (self.p + 2.0) / 2.0) * torch.pow(x / r_max, self.p)
+            + self.p * (self.p + 2.0) * torch.pow(x / r_max, self.p + 1)
+            - (self.p * (self.p + 1.0) / 2) * torch.pow(x / r_max, self.p + 2)
+        ) * (x < r_max)
+        # just the repulsive term
+        v_edges = (
+            4.0
+            # * epsilon_uv
+            * lmbdas**lambda_pow
+            * torch.pow(
+                (
+                    0.5 * torch.pow(1.0 - lmbdas, torch.tensor(2))
+                    + torch.pow(x / sigma_uv, torch.tensor(6))
+                ),
+                -2,
+            )
+            # - (
+            #     torch.pow(
+            #         (0.5 * torch.pow(1 - lmbda, 2) + torch.pow(x / sigma_uv, 6)), -2
+            #     )
+            # )
+            * envelope
+        )
+        V_LJ = scatter_sum(v_edges, receiver, dim=0, dim_size=node_attrs.size(0))
+        return V_LJ.squeeze(-1)
+
+
+@compile_mode("script")
 class ZBLBasis(torch.nn.Module):
     """
     Implementation of the Ziegler-Biersack-Littmark (ZBL) potential
@@ -281,7 +359,7 @@ class SoftTransform(torch.nn.Module):
     Soft Transform
     """
 
-    def __init__(self, a: float = 0.2, b: float = 3.0, trainable=False):
+    def __init__(self, a: float = 0.1, b: float = 3.0, trainable=False):
         super().__init__()
         self.register_buffer(
             "covalent_radii",
