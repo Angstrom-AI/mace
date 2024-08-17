@@ -58,12 +58,18 @@ class MACECalculator(Calculator):
         model_type="MACE",
         compile_mode=None,
         fullgraph=True,
+        decouple_indices=None,
+        lmbda=None,
         **kwargs,
     ):
         Calculator.__init__(self, **kwargs)
         self.results = {}
+        self.decouple_indices = decouple_indices
+        self.lmbda = lmbda
 
         self.model_type = model_type
+        self.decouple_indices = decouple_indices
+        self.lmbda = lmbda
 
         if model_type == "MACE":
             self.implemented_properties = [
@@ -245,6 +251,8 @@ class MACECalculator(Calculator):
                 batch.to_dict(),
                 compute_stress=compute_stress,
                 training=self.use_compile,
+                decouple_indices=self.decouple_indices,
+                lmbda=self.lmbda,
             )
             if self.model_type in ["MACE", "EnergyDipoleMACE"]:
                 ret_tensors["energies"][i] = out["energy"].detach()

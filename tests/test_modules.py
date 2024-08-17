@@ -12,6 +12,8 @@ from mace.modules import (
     WeightedEnergyForcesLoss,
     WeightedHuberEnergyForcesStressLoss,
 )
+from mace.modules.radial import SoftCoreLennardJones
+from mace.modules.utils import get_edge_vectors_and_lengths
 from mace.tools import AtomicNumberTable, scatter, to_numpy, torch_geometric
 
 config = Configuration(
@@ -110,3 +112,112 @@ class TestBlocks:
         out = scatter.scatter_sum(src=energies, index=batch.batch, dim=-1, reduce="sum")
         out = to_numpy(out)
         assert np.allclose(out, np.array([5.0, 5.0]))
+
+    def test_softcore_lj(self):
+
+        sclj = SoftCoreLennardJones(r_max=5.0, p=6)
+        # generate carbon carbon configs with varying separations
+        dataset = []
+        for d in np.linspace(0.5, 5, 10):
+            config = Configuration(
+                # two water molecules
+                atomic_numbers=np.array([8, 1, 1, 8, 1, 1]),
+                positions=np.array(
+                    [
+                        [0.0, -2.0, 0.0],
+                        [1.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0],
+                        [0.0, -2.0, 0.0 + d],
+                        [1.0, 0.0, 0.0 + d],
+                        [0.0, 1.0, 0.0 + d],
+                    ]
+                ),
+            )
+            dataset.append(AtomicData.from_config(config, z_table=table, cutoff=5.0))
+
+        data_loader = torch_geometric.dataloader.DataLoader(
+            dataset=dataset,
+            batch_size=1,
+            shuffle=False,
+            drop_last=False,
+        )
+
+        for idx, batch in zip(np.linspace(0.5, 5, 10), data_loader):
+            data = batch.to_dict()
+
+            # decouple one molecule from the other
+            max_alchemical_atom_idx = 2
+            alchemical_mask = torch.logical_or(
+                torch.logical_and(
+                    data["edge_index"][0, :] <= max_alchemical_atom_idx,
+                    data["edge_index"][1, :] > max_alchemical_atom_idx,
+                ),
+                torch.logical_and(
+                    data["edge_index"][1, :] <= max_alchemical_atom_idx,
+                    data["edge_index"][0, :] > max_alchemical_atom_idx,
+                ),
+            )
+            _, lengths = get_edge_vectors_and_lengths(
+                positions=data["positions"],
+                edge_index=data["edge_index"],
+                shifts=data["shifts"],
+            )
+            node_attrs = data["node_attrs"]
+            edge_index = data["edge_index"]
+            atomic_numbers = torch.tensor([6, 6])
+            print(f"--------{idx}----------")
+            for l in torch.linspace(0, 1, 10):
+                energy = sclj(
+                    lengths,
+                    node_attrs,
+                    edge_index,
+                    atomic_numbers,
+                    lmbda=l,
+                    alchemical_mask=alchemical_mask,
+                )
+                assert energy.shape[0] == data["node_attrs"].shape[0]
+                print(torch.sum(energy), l)
+
+    # def test_softcore_lj(self):
+    #
+    #     table = AtomicNumberTable([6])
+    #     sclj = SoftCoreLennardJones(r_max=5.0, p=6)
+    #     alchemical_mask = torch.tensor([0.0, 1.0], dtype=torch.bool)
+    #     # generate carbon carbon configs with varying separations
+    #     dataset = []
+    #     for d in np.linspace(0.1, 1.6, 10):
+    #         config = Configuration(
+    #             atomic_numbers=np.array([6, 6]),
+    #             positions=np.array([[0.0, 0.0, 0.0], [d, 0.0, 0.0]]),
+    #         )
+    #         dataset.append(AtomicData.from_config(config, z_table=table, cutoff=5.0))
+    #
+    #     data_loader = torch_geometric.dataloader.DataLoader(
+    #         dataset=dataset,
+    #         batch_size=1,
+    #         shuffle=False,
+    #         drop_last=False,
+    #     )
+    #
+    #     for batch in data_loader:
+    #         data = batch.to_dict()
+    #
+    #         _, lengths = get_edge_vectors_and_lengths(
+    #             positions=data["positions"],
+    #             edge_index=data["edge_index"],
+    #             shifts=data["shifts"],
+    #         )
+    #         node_attrs = data["node_attrs"]
+    #         edge_index = data["edge_index"]
+    #         atomic_numbers = torch.tensor([6, 6])
+    #         print(f"--------{lengths}----------")
+    #         for l in torch.linspace(0, 1, 10):
+    #             energy = sclj(
+    #                 lengths,
+    #                 node_attrs,
+    #                 edge_index,
+    #                 atomic_numbers,
+    #                 lmbda=l,
+    #                 alchemical_mask=alchemical_mask,
+    #             )
+    #             print(energy, l)

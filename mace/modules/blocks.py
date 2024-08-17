@@ -186,6 +186,8 @@ class RadialEmbeddingBlock(torch.nn.Module):
             edge_lengths = self.distance_transform(
                 edge_lengths, node_attrs, edge_index, atomic_numbers
             )
+            # applying the distance transform stacks the minimum distances so nothing is close to zero
+
         radial = self.bessel_fn(edge_lengths)  # [n_edges, n_basis]
         return radial * cutoff  # [n_edges, n_basis]
 
