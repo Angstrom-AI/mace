@@ -379,25 +379,26 @@ class ScaleShiftMACE(MACE):
             edge_feats[alchemical_mask] *= lmbda
         else:
             alchemical_mask = torch.zeros_like(data["edge_index"][0], dtype=torch.bool)
-        match self.pair_repulsion:
-            case "ZBL":
-                pair_node_energy = self.pair_repulsion_fn(
-                    lengths,
-                    data["node_attrs"],
-                    data["edge_index"],
-                    self.atomic_numbers,
-                )
-            case "SCLJ":
-                pair_node_energy = self.pair_repulsion_fn(
-                    lengths,
-                    node_attrs=data["node_attrs"],
-                    edge_index=data["edge_index"],
-                    atomic_numbers=self.atomic_numbers,
-                    lmbda=lmbda,
-                    alchemical_mask=alchemical_mask,
-                )
-            case None:
-                pair_node_energy = torch.zeros_like(node_e0)
+        # match self.pair_repulsion:
+        if self.pair_repulsion == "ZBL": 
+            pair_node_energy = self.pair_repulsion_fn(
+                lengths,
+                data["node_attrs"],
+                data["edge_index"],
+                self.atomic_numbers,
+                alchemical_mask=alchemical_mask
+            )
+        elif self.pair_repulsion == "SCLJ":
+            pair_node_energy = self.pair_repulsion_fn(
+                lengths,
+                node_attrs=data["node_attrs"],
+                edge_index=data["edge_index"],
+                atomic_numbers=self.atomic_numbers,
+                lmbda=lmbda,
+                alchemical_mask=alchemical_mask,
+            )
+        else:
+            pair_node_energy = torch.zeros_like(node_e0)
         # Interactions
         node_es_list = [pair_node_energy]
         node_feats_list = []

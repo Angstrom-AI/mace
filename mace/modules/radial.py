@@ -180,7 +180,7 @@ class SoftCoreLennardJones(torch.nn.Module):
         sigma_v = self.covalent_radii[Z_v] * 2 ** (-1 / 6)
         sigma_uv = (sigma_u + sigma_v) / 2
         # edge-dependent lambda: 1 for non-alchemical edges, lmbda for alchemical v_edges
-        lmbdas = torch.ones_like(sender, dtype=torch.get_default_dtype())
+        lmbdas = torch.ones_like(sender, dtype=x.dtype)
         # set lambdas where alchemical_mask is True to lmbda
         lmbdas[alchemical_mask] = lmbda
         lmbdas = lmbdas.unsqueeze(-1)
@@ -264,6 +264,7 @@ class ZBLBasis(torch.nn.Module):
         node_attrs: torch.Tensor,
         edge_index: torch.Tensor,
         atomic_numbers: torch.Tensor,
+        alchemical_mask=None
     ) -> torch.Tensor:
         sender = edge_index[0]
         receiver = edge_index[1]
