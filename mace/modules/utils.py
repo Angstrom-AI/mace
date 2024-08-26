@@ -6,6 +6,7 @@
 
 import logging
 from typing import List, Optional, Tuple
+import ase
 
 import numpy as np
 import torch

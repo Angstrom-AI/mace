@@ -181,6 +181,7 @@ class RadialEmbeddingBlock(torch.nn.Module):
         edge_index: torch.Tensor,
         atomic_numbers: torch.Tensor,
     ):
+
         cutoff = self.cutoff_fn(edge_lengths)  # [n_edges, 1]
         if hasattr(self, "distance_transform"):
             edge_lengths = self.distance_transform(

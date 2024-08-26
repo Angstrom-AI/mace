@@ -175,31 +175,30 @@ class SoftCoreLennardJones(torch.nn.Module):
         )
         Z_u = node_atomic_numbers[sender]
         Z_v = node_atomic_numbers[receiver]
+        # r_max is approx the covalent bond length, so having it contribute significantly here is distorting the basin.  Don't want a contribution until sigma_uv
         r_max = self.covalent_radii[Z_u] + self.covalent_radii[Z_v]
+        # approximate positions of the zero points, from universal LJ parameter set
         sigma_u = self.covalent_radii[Z_u] * 2 ** (-1 / 6)
         sigma_v = self.covalent_radii[Z_v] * 2 ** (-1 / 6)
         sigma_uv = (sigma_u + sigma_v) / 2
-        # edge-dependent lambda: 1 for non-alchemical edges, lmbda for alchemical v_edges
         lmbdas = torch.ones_like(sender, dtype=x.dtype)
-        # set lambdas where alchemical_mask is True to lmbda
         lmbdas[alchemical_mask] = lmbda
         lmbdas = lmbdas.unsqueeze(-1)
-
-        # epsilon_uv = torch.sqrt(
-        #     self.cohesive_energies[Z_u] * self.cohesive_energies[Z_v]
-        # )
+        # check for nans
+        assert not torch.isnan(lmbdas).any()
 
         # Buetler-style soft-core Lennard-Jones potential
+        # this does not start contributing until the repulsive part at r <= sigma_uv
         envelope = (
             1.0
-            - ((self.p + 1.0) * (self.p + 2.0) / 2.0) * torch.pow(x / r_max, self.p)
-            + self.p * (self.p + 2.0) * torch.pow(x / r_max, self.p + 1)
-            - (self.p * (self.p + 1.0) / 2) * torch.pow(x / r_max, self.p + 2)
-        ) * (x < r_max)
+            - ((self.p + 1.0) * (self.p + 2.0) / 2.0) * torch.pow(x / sigma_uv, self.p)
+            + self.p * (self.p + 2.0) * torch.pow(x / sigma_uv, self.p + 1)
+            - (self.p * (self.p + 1.0) / 2) * torch.pow(x / sigma_uv, self.p + 2)
+        ) * (x < sigma_uv)
+        assert not torch.isnan(envelope).any()
         # just the repulsive term
         v_edges = (
             4.0
-            # * epsilon_uv
             * lmbdas**lambda_pow
             * torch.pow(
                 (
@@ -208,15 +207,35 @@ class SoftCoreLennardJones(torch.nn.Module):
                 ),
                 -2,
             )
-            # - (
-            #     torch.pow(
-            #         (0.5 * torch.pow(1 - lmbda, 2) + torch.pow(x / sigma_uv, 6)), -2
-            #     )
-            # )
             * envelope
         )
+        assert not torch.isnan(v_edges).any()
         V_LJ = scatter_sum(v_edges, receiver, dim=0, dim_size=node_attrs.size(0))
         return V_LJ.squeeze(-1)
+
+
+class SigmaParameters(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.register_buffer(
+            "covalent_radii",
+            torch.tensor(ase.data.covalent_radii, dtype=torch.get_default_dtype()),
+        )
+
+    def forward(self, edge_index, node_attrs, atomic_numbers):
+        sender = edge_index[0]
+        receiver = edge_index[1]
+        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(
+            -1
+        )
+        Z_u = node_atomic_numbers[sender]
+        Z_v = node_atomic_numbers[receiver]
+        r_cov = self.covalent_radii[Z_u] + self.covalent_radii[Z_v]
+        # approximate positions of the zero points, from universal LJ parameter set
+        sigma_u = self.covalent_radii[Z_u] * 2 ** (-1 / 6)
+        sigma_v = self.covalent_radii[Z_v] * 2 ** (-1 / 6)
+        return (sigma_u + sigma_v) / 2, r_cov
 
 
 @compile_mode("script")
@@ -264,7 +283,7 @@ class ZBLBasis(torch.nn.Module):
         node_attrs: torch.Tensor,
         edge_index: torch.Tensor,
         atomic_numbers: torch.Tensor,
-        alchemical_mask=None
+        alchemical_mask=None,
     ) -> torch.Tensor:
         sender = edge_index[0]
         receiver = edge_index[1]

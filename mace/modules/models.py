@@ -12,7 +12,7 @@ from e3nn import o3
 from e3nn.util.jit import compile_mode
 
 from mace.data import AtomicData
-from mace.modules.radial import SoftCoreLennardJones, ZBLBasis
+from mace.modules.radial import SigmaParameters, SoftCoreLennardJones, ZBLBasis
 from mace.tools.scatter import scatter_sum
 
 from .blocks import (
@@ -96,6 +96,7 @@ class MACE(torch.nn.Module):
                 self.pair_repulsion_fn = SoftCoreLennardJones(
                     r_max=r_max, p=num_polynomial_cutoff
                 )
+        self.compute_sigma_uv = SigmaParameters()
 
         sh_irreps = o3.Irreps.spherical_harmonics(max_ell)
         num_features = hidden_irreps.count(o3.Irrep(0, 1))
@@ -374,19 +375,19 @@ class ScaleShiftMACE(MACE):
                     data["edge_index"][0, :] > max_alchemical_atom_idx,
                 ),
             )
-
+            # factor of \lambda**2
             edge_attrs[alchemical_mask] *= lmbda
             edge_feats[alchemical_mask] *= lmbda
         else:
             alchemical_mask = torch.zeros_like(data["edge_index"][0], dtype=torch.bool)
         # match self.pair_repulsion:
-        if self.pair_repulsion == "ZBL": 
+        if self.pair_repulsion == "ZBL":
             pair_node_energy = self.pair_repulsion_fn(
                 lengths,
                 data["node_attrs"],
                 data["edge_index"],
                 self.atomic_numbers,
-                alchemical_mask=alchemical_mask
+                alchemical_mask=alchemical_mask,
             )
         elif self.pair_repulsion == "SCLJ":
             pair_node_energy = self.pair_repulsion_fn(
@@ -397,6 +398,35 @@ class ScaleShiftMACE(MACE):
                 lmbda=lmbda,
                 alchemical_mask=alchemical_mask,
             )
+            # second part: scale the two body terms for those interactions inside the sigma parameter
+            # this allows us to kill the mace contributions at short range that cause the wiggly lines without explicitly providing data in that regime
+
+            # TODO: should the scaling start from r_cov or sigma_uv?
+            sigma_uv, r_cov = self.compute_sigma_uv(
+                data["edge_index"], data["node_attrs"], self.atomic_numbers
+            )
+            # print(sigma_uv)
+            # TODO: clean up aliasing
+            x = lengths
+            self.p = 6
+            # fourth power kills these terms very quickly and lets the SCLJ take over where it is valid
+            # since we only have the repulsive part of SCLJ, mace needs to give good evaluations up to sigma_uv
+            two_body_scaling = 1 - (
+                1.0
+                - ((self.p + 1.0) * (self.p + 2.0) / 2.0)
+                * torch.pow(x / sigma_uv, self.p)
+                + self.p * (self.p + 2.0) * torch.pow(x / sigma_uv, self.p + 1)
+                - (self.p * (self.p + 1.0) / 2) * torch.pow(x / sigma_uv, self.p + 2)
+            ) ** 4 * (x < sigma_uv)
+            # print("sigma_uv", sigma_uv.data.cpu().numpy())
+            # print("lengths", lengths.data.cpu().numpy())
+            # print("two_body_scaling", two_body_scaling.data.cpu().numpy())
+            # print("Pair node energy", pair_node_energy.data.cpu().numpy())
+
+            # for eqm configs this should be negligible
+            # print(torch.max(two_body_scaling))
+
+            edge_attrs *= two_body_scaling
         else:
             pair_node_energy = torch.zeros_like(node_e0)
         # Interactions
@@ -455,6 +485,7 @@ class ScaleShiftMACE(MACE):
             "hessian": hessian,
             "displacement": displacement,
             "node_feats": node_feats_out,
+            "node_es_list": node_es_list,
         }
 
         return output
