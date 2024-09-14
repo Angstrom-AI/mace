@@ -659,7 +659,7 @@ def build_preprocess_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test_file",
         help="Test set xyz file",
-        type=str,
+        nargs="+",
         default=None,
         required=False,
     )
