@@ -121,7 +121,8 @@ def config_from_atoms(
     virials = atoms.info.get(virials_key, None)
     dipole = atoms.info.get(dipole_key, None)  # Debye
     # Charges default to 0 instead of None if not found
-    charges = atoms.arrays.get(charges_key, np.zeros(len(atoms)))  # atomic unit
+    charges = atoms.arrays.get(
+        charges_key, np.zeros(len(atoms)))  # atomic unit
     atomic_numbers = np.array(
         [ase.data.atomic_numbers[symbol] for symbol in atoms.symbols]
     )
@@ -190,7 +191,7 @@ def test_config_types(
 
 
 def load_from_xyz(
-    file_path: str,
+    file_path: List,
     config_type_weights: Dict,
     energy_key: str = "energy",
     forces_key: str = "forces",
@@ -201,7 +202,11 @@ def load_from_xyz(
     extract_atomic_energies: bool = False,
     keep_isolated_atoms: bool = False,
 ) -> Tuple[Dict[int, float], Configurations]:
-    atoms_list = ase.io.read(file_path, index=":")
+    # atoms_list = ase.io.read(file_path, index=":")
+    atoms_list = []
+    for file in file_path:
+        print("Parsing xyz file ", file)
+        atoms_list.extend(ase.io.read(file, ":"))
     if energy_key == "energy":
         logging.info(
             "Since ASE version 3.23.0b1, using energy_key 'energy' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting energies to 'REF_energy'. You need to use --energy_key='REF_energy', to tell the key name chosen."
@@ -243,7 +248,8 @@ def load_from_xyz(
 
         for idx, atoms in enumerate(atoms_list):
             isolated_atom_config = (
-                len(atoms) == 1 and atoms.info.get("config_type") == "IsolatedAtom"
+                len(atoms) == 1 and atoms.info.get(
+                    "config_type") == "IsolatedAtom"
             )
             if isolated_atom_config:
                 if energy_key in atoms.info.keys():
@@ -255,7 +261,8 @@ def load_from_xyz(
                         f"Configuration '{idx}' is marked as 'IsolatedAtom' "
                         "but does not contain an energy. Zero energy will be used."
                     )
-                    atomic_energies_dict[atoms.get_atomic_numbers()[0]] = np.zeros(1)
+                    atomic_energies_dict[atoms.get_atomic_numbers()[
+                        0]] = np.zeros(1)
             else:
                 atoms_without_iso_atoms.append(atoms)
 
@@ -291,7 +298,8 @@ def compute_average_E0s(
     for i in range(len_train):
         B[i] = collections_train[i].energy
         for j, z in enumerate(z_table.zs):
-            A[i, j] = np.count_nonzero(collections_train[i].atomic_numbers == z)
+            A[i, j] = np.count_nonzero(
+                collections_train[i].atomic_numbers == z)
     try:
         E0s = np.linalg.lstsq(A, B, rcond=None)[0]
         atomic_energies_dict = {}
