@@ -311,14 +311,15 @@ class ScaleShiftMACE(MACE):
         compute_stress: bool = False,
         compute_displacement: bool = False,
         compute_hessian: bool = False,
-        decouple_indices: Optional[torch.Tensor] = None,
+        decouple_indices_a: Optional[torch.Tensor] = None,
+        decouple_indices_b: Optional[torch.Tensor] = None,
         lmbda: Optional[torch.Tensor] = None,
     ) -> Dict[str, Optional[torch.Tensor]]:
         # Setup
         data["positions"].requires_grad_(True)
         data["node_attrs"].requires_grad_(True)
-        #  if lmbda is not None:  -- disabled to reduce computational cost
-        #     lmbda.requires_grad_(True)
+         if lmbda is not None:#   disabled to reduce computational cost
+            lmbda.requires_grad_(True)
         num_graphs = data["ptr"].numel() - 1
         displacement = torch.zeros(
             (num_graphs, 3, 3),
@@ -356,22 +357,59 @@ class ScaleShiftMACE(MACE):
         edge_feats = self.radial_embedding(
             lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
         )
+
         # scale edge attrs and edge feats by lambda according to the alchemical mask
-        if lmbda is not None and decouple_indices is not None:
-            max_alchemical_atom_idx = torch.max(decouple_indices)
-            alchemical_mask = torch.logical_or(
+        if lmbda is not None:
+            if decouple_indices_a is not None:
+            # max_alchemical_atom_idx = torch.max(decouple_indices)
+            ligA_alchemical_mask = torch.logical_or(
                 torch.logical_and(
-                    data["edge_index"][0, :] <= max_alchemical_atom_idx,
-                    data["edge_index"][1, :] > max_alchemical_atom_idx,
+                    data["edge_index"][0, :] in decouple_indices_a,
+                    # check edge 
+                    data["edge_index"][1, :] not in decouple_indices a,
                 ),
                 torch.logical_and(
-                    data["edge_index"][1, :] <= max_alchemical_atom_idx,
-                    data["edge_index"][0, :] > max_alchemical_atom_idx,
+                    data["edge_index"][1, :]  in decouple_indices_a,
+                    data["edge_index"][0, :] not in decouple_indices_a,
                 ),
             )
 
-            edge_attrs[alchemical_mask] *= lmbda
-            edge_feats[alchemical_mask] *= lmbda
+            edge_attrs[ligA_alchemical_mask] *= lmbda
+            edge_feats[ligA_alchemical_mask] *= lmbda
+
+            # for a dual topology calculation, scale the interactions between b and the environment
+            if decouple_indices_b is not None:
+                # scale interactions between ligand B and everything else (ligA and ligB will be turned off in the next stage)
+                ligB_alchemical_mask = torch.logical_or(
+                    torch.logical_and(
+                        data["edge_index"][0, :] in decouple_indices_b,
+                        # check edge 
+                        data["edge_index"][1, :] not in decouple_indices b,
+                    ),
+                    torch.logical_and(
+                        data["edge_index"][1, :]  in decouple_indices_b,
+                        data["edge_index"][0, :] not in decouple_indices_b,
+                    ),
+                )
+
+                edge_attrs[ligB_alchemical_mask] *= lmbda
+                edge_feats[ligB_alchemical_mask] *= lmbda
+
+                # also if we have a ligandB we need to switch off the terms between the 
+                ligA_ligB_mask = torch.logical_or(
+                    torch.logical_and(
+                        data["edge_index"][0, :] in decouple_indices_a,
+                        # check edge 
+                        data["edge_index"][1, :] in decouple_indices b,
+                    ),
+                    torch.logical_and(
+                        data["edge_index"][1, :]  in decouple_indices_a,
+                        data["edge_index"][0, :] in decouple_indices_b,
+                    ),
+                )
+                )
+                edge_attrs[ligA_ligB_mask] *= 0.0
+                edge_feats[ligA_ligB_mask] *= 0.0
 
         if hasattr(self, "pair_repulsion"):
             pair_node_energy = self.pair_repulsion_fn(
