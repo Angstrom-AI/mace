@@ -61,7 +61,7 @@ class MACE(torch.nn.Module):
         distance_transform: str = "None",
         radial_MLP: Optional[List[int]] = None,
         radial_type: Optional[str] = "bessel",
-        sparse_max: int = 0,
+        symmetric_contraction_sparse_max: int = 0,
     ):
         super().__init__()
         self.register_buffer(
@@ -128,7 +128,7 @@ class MACE(torch.nn.Module):
             correlation=correlation[0],
             num_elements=num_elements,
             use_sc=use_sc_first,
-            sparse_max=sparse_max,
+            sparse_max=symmetric_contraction_sparse_max,
         )
         self.products = torch.nn.ModuleList([prod])
 
@@ -159,7 +159,7 @@ class MACE(torch.nn.Module):
                 correlation=correlation[i + 1],
                 num_elements=num_elements,
                 use_sc=True,
-                sparse_max=sparse_max,
+                sparse_max=symmetric_contraction_sparse_max,
             )
             self.products.append(prod)
             if i == num_interactions - 2:
@@ -659,7 +659,7 @@ class AtomicDipolesMACE(torch.nn.Module):
         ],  # Just here to make it compatible with energy models, MUST be None
         radial_type: Optional[str] = "bessel",
         radial_MLP: Optional[List[int]] = None,
-        sparse_max: int = 0,
+        symmetric_contraction_sparse_max: int = 0,
     ):
         super().__init__()
         self.register_buffer(
@@ -719,7 +719,7 @@ class AtomicDipolesMACE(torch.nn.Module):
             correlation=correlation,
             num_elements=num_elements,
             use_sc=use_sc_first,
-            sparse_max=sparse_max,
+            sparse_max=symmetric_contraction_sparse_max,
         )
         self.products = torch.nn.ModuleList([prod])
 
@@ -753,7 +753,7 @@ class AtomicDipolesMACE(torch.nn.Module):
                 correlation=correlation,
                 num_elements=num_elements,
                 use_sc=True,
-                sparse_max=sparse_max,
+                sparse_max=symmetric_contraction_sparse_max,
             )
             self.products.append(prod)
             if i == num_interactions - 2:
@@ -863,7 +863,7 @@ class EnergyDipolesMACE(torch.nn.Module):
         gate: Optional[Callable],
         atomic_energies: Optional[np.ndarray],
         radial_MLP: Optional[List[int]] = None,
-        sparse_max: int = 0,
+        symmetric_contraction_sparse_max: int = 0,
     ):
         super().__init__()
         self.register_buffer(
@@ -921,7 +921,7 @@ class EnergyDipolesMACE(torch.nn.Module):
             correlation=correlation,
             num_elements=num_elements,
             use_sc=use_sc_first,
-            sparse_max=sparse_max,
+            sparse_max=symmetric_contraction_sparse_max,
         )
         self.products = torch.nn.ModuleList([prod])
 
@@ -955,7 +955,7 @@ class EnergyDipolesMACE(torch.nn.Module):
                 correlation=correlation,
                 num_elements=num_elements,
                 use_sc=True,
-                sparse_max=sparse_max,
+                sparse_max=symmetric_contraction_sparse_max,
             )
             self.products.append(prod)
             if i == num_interactions - 2:
