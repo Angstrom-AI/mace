@@ -318,8 +318,8 @@ class ScaleShiftMACE(MACE):
         # Setup
         data["positions"].requires_grad_(True)
         data["node_attrs"].requires_grad_(True)
-         if lmbda is not None:#   disabled to reduce computational cost
-            lmbda.requires_grad_(True)
+        # if lmbda is not None:#   disabled to reduce computational cost
+        #     lmbda.requires_grad_(True)
         num_graphs = data["ptr"].numel() - 1
         displacement = torch.zeros(
             (num_graphs, 3, 3),
@@ -359,57 +359,125 @@ class ScaleShiftMACE(MACE):
         )
 
         # scale edge attrs and edge feats by lambda according to the alchemical mask
+        # scale edge attrs and edge feats by lambda according to the alchemical mask
         if lmbda is not None:
             if decouple_indices_a is not None:
-            # max_alchemical_atom_idx = torch.max(decouple_indices)
-            ligA_alchemical_mask = torch.logical_or(
-                torch.logical_and(
-                    data["edge_index"][0, :] in decouple_indices_a,
-                    # check edge 
-                    data["edge_index"][1, :] not in decouple_indices a,
-                ),
-                torch.logical_and(
-                    data["edge_index"][1, :]  in decouple_indices_a,
-                    data["edge_index"][0, :] not in decouple_indices_a,
-                ),
-            )
-
-            edge_attrs[ligA_alchemical_mask] *= lmbda
-            edge_feats[ligA_alchemical_mask] *= lmbda
-
-            # for a dual topology calculation, scale the interactions between b and the environment
-            if decouple_indices_b is not None:
-                # scale interactions between ligand B and everything else (ligA and ligB will be turned off in the next stage)
-                ligB_alchemical_mask = torch.logical_or(
+                # max_alchemical_atom_idx = torch.max(decouple_indices)
+                ligA_alchemical_mask = torch.logical_or(
+                    # TODO - only need to eval this expression once
                     torch.logical_and(
-                        data["edge_index"][0, :] in decouple_indices_b,
-                        # check edge 
-                        data["edge_index"][1, :] not in decouple_indices b,
+                        torch.isin(data["edge_index"][0, :], decouple_indices_a),
+                        ~torch.isin(data["edge_index"][1, :], decouple_indices_a),
                     ),
                     torch.logical_and(
-                        data["edge_index"][1, :]  in decouple_indices_b,
-                        data["edge_index"][0, :] not in decouple_indices_b,
+                        torch.isin(data["edge_index"][1, :], decouple_indices_a),
+                        ~torch.isin(data["edge_index"][0, :], decouple_indices_a),
                     ),
                 )
 
-                edge_attrs[ligB_alchemical_mask] *= lmbda
-                edge_feats[ligB_alchemical_mask] *= lmbda
+                # number of True values in the mask
+                # n_true = torch.sum(ligA_alchemical_mask)
+                # print(
+                #     f"Number of True values in the ligA mask: {n_true}, of {len(ligA_alchemical_mask)}"
+                # )
+                edge_attrs[ligA_alchemical_mask] *= lmbda
+                edge_feats[ligA_alchemical_mask] *= lmbda
 
-                # also if we have a ligandB we need to switch off the terms between the 
-                ligA_ligB_mask = torch.logical_or(
+                # for a dual topology calculation, scale the interactions between b and the environment
+                if decouple_indices_b is not None:
+                    # scale interactions between ligand B and everything else (ligA and ligB will be turned off in the next stage)
+                    ligB_alchemical_mask = torch.logical_or(
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][0, :], decouple_indices_b),
+                            ~torch.isin(data["edge_index"][1, :], decouple_indices_b),
+                        ),
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][1, :], decouple_indices_b),
+                            ~torch.isin(data["edge_index"][0, :], decouple_indices_b),
+                        ),
+                    )
+
+                    # n_true = torch.sum(ligB_alchemical_mask)
+                    # print(
+                    #     f"Number of True values in the ligB-surroundings mask: {n_true}"
+                    # )
+                    edge_attrs[ligB_alchemical_mask] *= 1 - lmbda
+                    edge_feats[ligB_alchemical_mask] *= 1 - lmbda
+
+                    # also if we have a ligandB we need to switch off the terms between the
+                    ligA_ligB_mask = torch.logical_or(
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][0, :], decouple_indices_a),
+                            torch.isin(data["edge_index"][1, :], decouple_indices_b),
+                        ),
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][1, :], decouple_indices_a),
+                            torch.isin(data["edge_index"][0, :], decouple_indices_b),
+                        ),
+                    )
+                    # n_true = torch.sum(ligA_ligB_mask)
+                    # print(f"Number of True values in the ligA_ligB mask: {n_true}")
+                    edge_attrs[ligA_ligB_mask] *= 0.0
+                    edge_feats[ligA_ligB_mask] *= 0.0
+        if lmbda is not None:
+            if decouple_indices_a is not None:
+                # max_alchemical_atom_idx = torch.max(decouple_indices)
+                ligA_alchemical_mask = torch.logical_or(
+                    # TODO - only need to eval this expression once
                     torch.logical_and(
-                        data["edge_index"][0, :] in decouple_indices_a,
-                        # check edge 
-                        data["edge_index"][1, :] in decouple_indices b,
+                        torch.isin(data["edge_index"][0, :], decouple_indices_a),
+                        ~torch.isin(data["edge_index"][1, :], decouple_indices_a),
                     ),
                     torch.logical_and(
-                        data["edge_index"][1, :]  in decouple_indices_a,
-                        data["edge_index"][0, :] in decouple_indices_b,
+                        torch.isin(data["edge_index"][1, :], decouple_indices_a),
+                        ~torch.isin(data["edge_index"][0, :], decouple_indices_a),
                     ),
                 )
-                )
-                edge_attrs[ligA_ligB_mask] *= 0.0
-                edge_feats[ligA_ligB_mask] *= 0.0
+
+                # number of True values in the mask
+                # n_true = torch.sum(ligA_alchemical_mask)
+                # print(
+                #     f"Number of True values in the ligA mask: {n_true}, of {len(ligA_alchemical_mask)}"
+                # )
+                edge_attrs[ligA_alchemical_mask] *= lmbda
+                edge_feats[ligA_alchemical_mask] *= lmbda
+
+                # for a dual topology calculation, scale the interactions between b and the environment
+                if decouple_indices_b is not None:
+                    # scale interactions between ligand B and everything else (ligA and ligB will be turned off in the next stage)
+                    ligB_alchemical_mask = torch.logical_or(
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][0, :], decouple_indices_b),
+                            ~torch.isin(data["edge_index"][1, :], decouple_indices_b),
+                        ),
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][1, :], decouple_indices_b),
+                            ~torch.isin(data["edge_index"][0, :], decouple_indices_b),
+                        ),
+                    )
+
+                    # n_true = torch.sum(ligB_alchemical_mask)
+                    # print(
+                    #     f"Number of True values in the ligB-surroundings mask: {n_true}"
+                    # )
+                    edge_attrs[ligB_alchemical_mask] *= 1 - lmbda
+                    edge_feats[ligB_alchemical_mask] *= 1 - lmbda
+
+                    # also if we have a ligandB we need to switch off the terms between the
+                    ligA_ligB_mask = torch.logical_or(
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][0, :], decouple_indices_a),
+                            torch.isin(data["edge_index"][1, :], decouple_indices_b),
+                        ),
+                        torch.logical_and(
+                            torch.isin(data["edge_index"][1, :], decouple_indices_a),
+                            torch.isin(data["edge_index"][0, :], decouple_indices_b),
+                        ),
+                    )
+                    # n_true = torch.sum(ligA_ligB_mask)
+                    # print(f"Number of True values in the ligA_ligB mask: {n_true}")
+                    edge_attrs[ligA_ligB_mask] *= 0.0
+                    edge_feats[ligA_ligB_mask] *= 0.0
 
         if hasattr(self, "pair_repulsion"):
             pair_node_energy = self.pair_repulsion_fn(
