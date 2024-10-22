@@ -70,7 +70,8 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
     )
-    parser.add_argument("--log_level", help="log level", type=str, default="INFO")
+    parser.add_argument("--log_level", help="log level",
+                        type=str, default="INFO")
 
     parser.add_argument(
         "--error_table",
@@ -388,7 +389,7 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         "--forces_weight", help="weight of forces loss", type=float, default=100.0
     )
     parser.add_argument(
-        "--swa_forces_weight","--stage_two_forces_weight",
+        "--swa_forces_weight", "--stage_two_forces_weight",
         help="weight of forces loss after starting Stage Two (previously called swa)",
         type=float,
         default=100.0,
@@ -398,7 +399,7 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         "--energy_weight", help="weight of energy loss", type=float, default=1.0
     )
     parser.add_argument(
-        "--swa_energy_weight","--stage_two_energy_weight",
+        "--swa_energy_weight", "--stage_two_energy_weight",
         help="weight of energy loss after starting Stage Two (previously called swa)",
         type=float,
         default=1000.0,
@@ -428,7 +429,7 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         "--dipole_weight", help="weight of dipoles loss", type=float, default=1.0
     )
     parser.add_argument(
-        "--swa_dipole_weight","--stage_two_dipole_weight",
+        "--swa_dipole_weight", "--stage_two_dipole_weight",
         help="weight of dipoles after starting Stage Two (previously called swa)",
         type=float,
         default=1.0,
@@ -459,7 +460,8 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.9,
     )
-    parser.add_argument("--batch_size", help="batch size", type=int, default=10)
+    parser.add_argument("--batch_size", help="batch size",
+                        type=int, default=10)
     parser.add_argument(
         "--valid_batch_size", help="Validation batch size", type=int, default=10
     )
@@ -501,7 +503,7 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         dest="swa",
     )
     parser.add_argument(
-        "--start_swa","--start_stage_two",
+        "--start_swa", "--start_stage_two",
         help="Number of epochs before changing to Stage Two loss weights",
         type=int,
         default=None,
@@ -631,8 +633,7 @@ def build_preprocess_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--train_file",
         help="Training set h5 file",
-        type=str,
-        default=None,
+        nargs="+",
         required=True,
     )
     parser.add_argument(
@@ -658,7 +659,7 @@ def build_preprocess_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test_file",
         help="Test set xyz file",
-        type=str,
+        nargs="+",
         default=None,
         required=False,
     )
