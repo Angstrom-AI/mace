@@ -29,14 +29,11 @@ class SymmetricContraction(CodeGenMixin, torch.nn.Module):
         correlation: Union[int, Dict[str, int]],
         irrep_normalization: str = "component",
         path_normalization: str = "element",
-        sparse_max: int = 0,
         internal_weights: Optional[bool] = None,
         shared_weights: Optional[bool] = None,
         num_elements: Optional[int] = None,
     ) -> None:
         super().__init__()
-
-        self.sparse_max = sparse_max
 
         if irrep_normalization is None:
             irrep_normalization = "component"
@@ -78,7 +75,6 @@ class SymmetricContraction(CodeGenMixin, torch.nn.Module):
                     internal_weights=self.internal_weights,
                     num_elements=num_elements,
                     weights=self.shared_weights,
-                    sparse_max=sparse_max,
                 )
             )
 
@@ -95,7 +91,6 @@ class Contraction(torch.nn.Module):
         irrep_out: o3.Irreps,
         correlation: int,
         internal_weights: bool = True,
-        sparse_max: int = 0,
         num_elements: Optional[int] = None,
         weights: Optional[torch.Tensor] = None,
     ) -> None:
@@ -104,15 +99,12 @@ class Contraction(torch.nn.Module):
         self.num_features = irreps_in.count((0, 1))
         self.coupling_irreps = o3.Irreps([irrep.ir for irrep in irreps_in])
         self.correlation = correlation
-        self.sparse_max = sparse_max
-
         dtype = torch.get_default_dtype()
         for nu in range(1, correlation + 1):
             U_matrix = U_matrix_real(
                 irreps_in=self.coupling_irreps,
                 irreps_out=irrep_out,
                 correlation=nu,
-                sparse_max=sparse_max,
                 dtype=dtype,
             )[-1]
             self.register_buffer(f"U_matrix_{nu}", U_matrix)
