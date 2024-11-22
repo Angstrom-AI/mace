@@ -90,6 +90,9 @@ def configure_model(
         logging.info(
             f"Distance transform for radial basis functions: {args.distance_transform}"
         )
+        logging.info(
+            f"Symmetric contraction sparse max: {args.symmetric_contraction_sparse_max}"
+        )
 
         assert (
             len({irrep.mul for irrep in o3.Irreps(args.hidden_irreps)}) == 1
@@ -109,6 +112,7 @@ def configure_model(
             atomic_energies=atomic_energies,
             avg_num_neighbors=args.avg_num_neighbors,
             atomic_numbers=z_table.zs,
+            symmetric_contraction_sparse_max=args.symmetric_contraction_sparse_max,
         )
         model_config_foundation = None
 

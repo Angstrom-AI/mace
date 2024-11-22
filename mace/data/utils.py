@@ -211,7 +211,7 @@ def test_config_types(
 
 
 def load_from_xyz(
-    file_path: str,
+    file_path: List,
     config_type_weights: Dict,
     energy_key: str = "REF_energy",
     forces_key: str = "REF_forces",
@@ -224,7 +224,12 @@ def load_from_xyz(
     extract_atomic_energies: bool = False,
     keep_isolated_atoms: bool = False,
 ) -> Tuple[Dict[int, float], Configurations]:
-    atoms_list = ase.io.read(file_path, index=":")
+    # atoms_list = ase.io.read(file_path, index=":")
+    atoms_list = []
+    for file in file_path:
+        logging.info(f"Loading file: {file}")
+        atoms_list.extend(ase.io.read(file, index=":"))
+
     if energy_key == "energy":
         logging.warning(
             "Since ASE version 3.23.0b1, using energy_key 'energy' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'energy' to 'REF_energy'. You need to use --energy_key='REF_energy' to specify the chosen key name."

@@ -256,6 +256,7 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         "--train_file",
         help="Training set file, format is .xyz or .h5",
         type=str,
+        nargs="+",
         required=False,
     )
     parser.add_argument(
@@ -276,6 +277,7 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         "--test_file",
         help="Test set .xyz pt .h5 file",
         type=str,
+        nargs="+",
     )
     parser.add_argument(
         "--test_dir",
@@ -666,6 +668,12 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         help="Enable cuequivariance acceleration",
         type=str2bool,
         default=False,
+    )
+    # options to enable basis sparsification
+    parser.add_argument(
+        "--symmetric_contraction_sparse_max",
+        type=int,
+        default=0,
     )
     # options for using Weights and Biases for experiment tracking
     # to install see https://wandb.ai

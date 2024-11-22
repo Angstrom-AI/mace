@@ -63,6 +63,7 @@ class MACE(torch.nn.Module):
         radial_type: Optional[str] = "bessel",
         heads: Optional[List[str]] = None,
         cueq_config: Optional[Dict[str, Any]] = None,
+        symmetric_contraction_sparse_max: int = 0,
     ):
         super().__init__()
         self.register_buffer(
@@ -136,6 +137,7 @@ class MACE(torch.nn.Module):
             num_elements=num_elements,
             use_sc=use_sc_first,
             cueq_config=cueq_config,
+            sparse_max=symmetric_contraction_sparse_max,
         )
         self.products = torch.nn.ModuleList([prod])
 
@@ -172,6 +174,7 @@ class MACE(torch.nn.Module):
                 num_elements=num_elements,
                 use_sc=True,
                 cueq_config=cueq_config,
+                sparse_max=symmetric_contraction_sparse_max,
             )
             self.products.append(prod)
             if i == num_interactions - 2:
@@ -249,6 +252,7 @@ class MACE(torch.nn.Module):
         edge_feats = self.radial_embedding(
             lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
         )
+
         if hasattr(self, "pair_repulsion"):
             pair_node_energy = self.pair_repulsion_fn(
                 lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
@@ -348,10 +352,14 @@ class ScaleShiftMACE(MACE):
         compute_stress: bool = False,
         compute_displacement: bool = False,
         compute_hessian: bool = False,
+        decouple_indices: Optional[torch.Tensor] = None,
+        lmbda: Optional[torch.Tensor] = None,
     ) -> Dict[str, Optional[torch.Tensor]]:
         # Setup
         data["positions"].requires_grad_(True)
         data["node_attrs"].requires_grad_(True)
+        #  if lmbda is not None:  -- disabled to reduce computational cost
+        #     lmbda.requires_grad_(True)
         num_graphs = data["ptr"].numel() - 1
         num_atoms_arange = torch.arange(data["positions"].shape[0])
         node_heads = (
@@ -397,6 +405,23 @@ class ScaleShiftMACE(MACE):
         edge_feats = self.radial_embedding(
             lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
         )
+        # scale edge attrs and edge feats by lambda according to the alchemical mask
+        if lmbda is not None and decouple_indices is not None:
+            max_alchemical_atom_idx = torch.max(decouple_indices)
+            alchemical_mask = torch.logical_or(
+                torch.logical_and(
+                    data["edge_index"][0, :] <= max_alchemical_atom_idx,
+                    data["edge_index"][1, :] > max_alchemical_atom_idx,
+                ),
+                torch.logical_and(
+                    data["edge_index"][1, :] <= max_alchemical_atom_idx,
+                    data["edge_index"][0, :] > max_alchemical_atom_idx,
+                ),
+            )
+
+            edge_attrs[alchemical_mask] *= lmbda
+            edge_feats[alchemical_mask] *= lmbda
+
         if hasattr(self, "pair_repulsion"):
             pair_node_energy = self.pair_repulsion_fn(
                 lengths, data["node_attrs"], data["edge_index"], self.atomic_numbers
@@ -689,6 +714,7 @@ class AtomicDipolesMACE(torch.nn.Module):
         radial_type: Optional[str] = "bessel",
         radial_MLP: Optional[List[int]] = None,
         cueq_config: Optional[Dict[str, Any]] = None,  # pylint: disable=unused-argument
+        symmetric_contraction_sparse_max: int = 0,
     ):
         super().__init__()
         self.register_buffer(
@@ -748,6 +774,7 @@ class AtomicDipolesMACE(torch.nn.Module):
             correlation=correlation,
             num_elements=num_elements,
             use_sc=use_sc_first,
+            sparse_max=symmetric_contraction_sparse_max,
         )
         self.products = torch.nn.ModuleList([prod])
 
@@ -781,6 +808,7 @@ class AtomicDipolesMACE(torch.nn.Module):
                 correlation=correlation,
                 num_elements=num_elements,
                 use_sc=True,
+                sparse_max=symmetric_contraction_sparse_max,
             )
             self.products.append(prod)
             if i == num_interactions - 2:
@@ -891,6 +919,7 @@ class EnergyDipolesMACE(torch.nn.Module):
         atomic_energies: Optional[np.ndarray],
         radial_MLP: Optional[List[int]] = None,
         cueq_config: Optional[Dict[str, Any]] = None,  # pylint: disable=unused-argument
+        symmetric_contraction_sparse_max: int = 0,
     ):
         super().__init__()
         self.register_buffer(
@@ -948,6 +977,7 @@ class EnergyDipolesMACE(torch.nn.Module):
             correlation=correlation,
             num_elements=num_elements,
             use_sc=use_sc_first,
+            sparse_max=symmetric_contraction_sparse_max,
         )
         self.products = torch.nn.ModuleList([prod])
 
@@ -981,6 +1011,7 @@ class EnergyDipolesMACE(torch.nn.Module):
                 correlation=correlation,
                 num_elements=num_elements,
                 use_sc=True,
+                sparse_max=symmetric_contraction_sparse_max,
             )
             self.products.append(prod)
             if i == num_interactions - 2:

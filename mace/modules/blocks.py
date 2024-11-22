@@ -254,6 +254,7 @@ class EquivariantProductBasisBlock(torch.nn.Module):
         target_irreps: o3.Irreps,
         correlation: int,
         use_sc: bool = True,
+        sparse_max: int = 0,
         num_elements: Optional[int] = None,
         cueq_config: Optional[CuEquivarianceConfig] = None,
     ) -> None:
@@ -266,6 +267,7 @@ class EquivariantProductBasisBlock(torch.nn.Module):
             correlation=correlation,
             num_elements=num_elements,
             cueq_config=cueq_config,
+            sparse_max=sparse_max,
         )
         # Update linear
         self.linear = Linear(
